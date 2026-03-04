@@ -1,0 +1,25 @@
+{
+  "name": "bolzaa-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --loader tsx server.ts",
+    "dev": "tsx watch server.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "cors": "^2.8.6",
+    "compression": "^1.8.1",
+    "helmet": "^5.0.0",
+    "express-rate-limit": "^8.2.1",
+    "nodemailer": "^8.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "@types/express": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/compression": "^1.7.7",
+    "@types/nodemailer": "^6.4.17"
+  }
+}

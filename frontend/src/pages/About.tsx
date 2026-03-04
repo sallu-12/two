@@ -44,7 +44,7 @@ const About = () => {
             viewport={{ once: true }}
             className="mx-auto max-w-2xl"
           >
-            <AnimatedBorderCard speed={12} glowBlur={16}>
+            <AnimatedBorderCard>
               <div className="p-8 md:p-10 text-center">
                 {/* Ambient glow blobs */}
                 <div className="pointer-events-none absolute -top-8 -left-8 h-40 w-40 rounded-full bg-purple-700/15 blur-3xl" />

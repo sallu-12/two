@@ -31,7 +31,7 @@ const Samples = () => {
               transition={{ duration: 0.5 }}
               className="mx-auto max-w-lg"
             >
-              <AnimatedBorderCard speed={8} glowBlur={14}>
+              <AnimatedBorderCard>
                 <div className="p-8">
                 {/* Ambient glows inside */}
                 <div className="pointer-events-none absolute -top-8 -left-8 h-44 w-44 rounded-full bg-purple-700/15 blur-3xl" />

@@ -115,7 +115,7 @@ const Contact = () => {
               animate={{ opacity: 1, y: 0 }}
               className="md:col-span-3"
             >
-              <AnimatedBorderCard speed={10} glowBlur={14}>
+              <AnimatedBorderCard>
               {sent ? (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}

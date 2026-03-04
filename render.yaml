@@ -5,7 +5,7 @@ services:
     plan: free
     root_dir: backend
     build_command: npm install
-    start_command: npm start
+    start_command: npx tsx server.ts
     envVars:
       - key: PORT
         value: 3001

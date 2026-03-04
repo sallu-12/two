@@ -184,14 +184,20 @@ const generateContactEmailHTML = (name: string, email: string, instagram: string
 </div>
 `;
 
-// Helper function to send email asynchronously (fire and forget with minimal logging in production)
-const sendEmailAsync = (mailOptions: SendMailOptions) => {
-  transporter.sendMail(mailOptions).catch((err) => {
-    if (isDev) {
-      console.error(`❌ Email FAILED to: ${mailOptions.to} | Error: ${err.message}`);
-    }
-  });
+// Helper function to send email asynchronously with comprehensive logging
+const sendEmailAsync = async (mailOptions: SendMailOptions) => {
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Email SENT successfully to: ${mailOptions.to} | MessageID: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`❌ Email FAILED to: ${mailOptions.to} | Error: ${errorMsg}`);
+    console.error(`📧 Transporter config - Host: smtp.gmail.com | Port: 587 | User: ${process.env.ADMIN_EMAIL}`);
+    throw err;
+  }
 };
+
 
 // ========================================
 // 🔒 PAYMENT VERIFICATION ENDPOINT (RATE LIMITED)
@@ -538,7 +544,7 @@ app.post('/api/verify-transaction', paymentLimiter, (req: Request, res: Response
 // ========================================
 // 📧 EMAIL SENDING ENDPOINT (RATE LIMITED)
 // ========================================
-app.post('/api/send-email', emailLimiter, (req: Request, res: Response) => {
+app.post('/api/send-email', emailLimiter, async (req: Request, res: Response) => {
   try {
     const { to, subject, text, html, name, email, instagram, channelLink, niche, message, screenshotBase64 } = req.body;
 
@@ -555,7 +561,8 @@ app.post('/api/send-email', emailLimiter, (req: Request, res: Response) => {
           text: `New Contact Form Submission\n\nName: ${name}\nEmail: ${email}\nInstagram: ${instagram}\nYouTube Channel: ${channelLink || '—'}\nNiche: ${niche}\n\nMessage:\n${message}`,
         };
 
-        sendEmailAsync(mailOptions);
+        await sendEmailAsync(mailOptions);
+        console.log(`📬 Contact form email sent from ${email} → ${process.env.ADMIN_EMAIL}`);
         return res.status(200).json({ success: true, message: 'Message received!' });
       }
       
@@ -587,11 +594,8 @@ app.post('/api/send-email', emailLimiter, (req: Request, res: Response) => {
       attachments: attachments.length > 0 ? attachments : undefined,
     };
 
-    sendEmailAsync(mailOptions);
-    
-    if (isDev) {
-      console.log(`📧 Order email queued → ${process.env.ADMIN_EMAIL} | Subject: ${subject} | Screenshot: ${attachments.length > 0 ? 'YES' : 'NO'}`);
-    }
+    await sendEmailAsync(mailOptions);
+    console.log(`📬 Order email sent | Subject: ${subject} | To: ${process.env.ADMIN_EMAIL} | Screenshot: ${attachments.length > 0 ? 'YES' : 'NO'}`);
     
     // Mark transaction as processed if present
     if (req.body.transactionId) {
@@ -603,10 +607,9 @@ app.post('/api/send-email', emailLimiter, (req: Request, res: Response) => {
     return res.status(200).json({ success: true, message: 'Payment received!' });
 
   } catch (error) {
-    if (isDev) {
-      console.error('Request error:', error);
-    }
-    return res.status(500).json({ error: 'Request processing failed' });
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`❌ Send-email endpoint error: ${errorMsg}`);
+    return res.status(500).json({ error: 'Failed to send email: ' + errorMsg });
   }
 });
 
@@ -624,14 +627,22 @@ setInterval(() => {
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  if (isDev) {
-    console.error('Server error:', err);
-  }
+  console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Server startup
-const server = app.listen(PORT, () => {
+// Server startup with transporter verification
+const server = app.listen(PORT, async () => {
+  try {
+    // Verify SMTP connection before accepting requests
+    await transporter.verify();
+    console.log(`✅ SMTP Connection verified for: ${process.env.ADMIN_EMAIL}`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`❌ SMTP Connection FAILED: ${errorMsg}`);
+    console.error(`⚠️ Email sending will not work until SMTP is configured correctly`);
+  }
+
   if (isDev) {
     console.log(`
 ╔════════════════════════════════════════╗

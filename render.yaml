@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bolzaa-backend
+    env: node
+    plan: free
+    root_dir: backend
+    build_command: npm install
+    start_command: npm start
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_EMAIL
+        value: bolzaa277@gmail.com
+      - key: EMAIL_PASS
+        originalValue: wvbe qofj xcdm axbx
+      - key: ALLOWED_ORIGINS
+        value: https://bolzaa-frontend.vercel.app

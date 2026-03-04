@@ -16,4 +16,4 @@ services:
       - key: EMAIL_PASS
         originalValue: wvbe qofj xcdm axbx
       - key: ALLOWED_ORIGINS
-        value: https://bolzaa-frontend.vercel.app
+        value: *

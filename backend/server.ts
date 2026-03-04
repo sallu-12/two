@@ -70,13 +70,26 @@ app.use(compression({ level: 6, threshold: 1024 }));
 // 5. JSON parsing with size limits (increased for base64 screenshots)
 app.use(express.json({ limit: '10mb' }));
 
-// 6. CORS with whitelist protection
-const allowedOrigins = isDev 
-  ? process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || []
-  : process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
+// 6. CORS with flexible whitelist protection
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ?.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean) || [];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+
+    if (isDev) return callback(null, true);
+
+    if (allowedOrigins.includes('*')) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   maxAge: 86400, // Cache preflight for 24 hours
 }));

@@ -13,10 +13,10 @@
     "helmet": "^5.0.0",
     "express-rate-limit": "^8.2.1",
     "nodemailer": "^8.0.1",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
     "@types/express": "^5.0.2",
     "@types/cors": "^2.8.17",
     "@types/compression": "^1.7.7",

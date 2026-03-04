@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Check, ArrowRight } from "lucide-react";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SectionHeading from "@/components/SectionHeading";
@@ -98,6 +99,14 @@ const plans = [
 
 const Pricing = () => {
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const handleSelectPlan = (planId: string) => {
     navigate(`/checkout/${planId}`);
@@ -121,10 +130,10 @@ const Pricing = () => {
             {plans.map((plan, i) => (
               <motion.div
                 key={plan.name}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.5 }}
+                initial={isMobile ? undefined : { opacity: 0, y: 24 }}
+                whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
+                viewport={isMobile ? undefined : { once: true }}
+                transition={isMobile ? undefined : { delay: i * 0.1, duration: 0.5 }}
                 className={`relative ${
                   plan.popular ? "scale-105 mt-6" : ""
                 } hover:-translate-y-2 transition-transform duration-300`}
@@ -132,9 +141,9 @@ const Pricing = () => {
                 {/* Most Popular Badge — outside AnimatedBorderCard so it's never clipped */}
                 {plan.popular && (
                   <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.3 }}
+                    initial={isMobile ? undefined : { opacity: 0, scale: 0.8 }}
+                    animate={isMobile ? undefined : { opacity: 1, scale: 1 }}
+                    transition={isMobile ? undefined : { delay: 0.3 }}
                     className="absolute -top-5 left-1/2 -translate-x-1/2 z-30"
                   >
                     <span className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r from-purple-500 to-orange-500 text-white shadow-lg whitespace-nowrap">
@@ -203,10 +212,10 @@ const Pricing = () => {
 
           {/* Common Details Section */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.4 }}
+            initial={isMobile ? undefined : { opacity: 0, y: 16 }}
+            whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
+            viewport={isMobile ? undefined : { once: true }}
+            transition={isMobile ? undefined : { delay: 0.4 }}
             className="mt-20 rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900/80 to-slate-800/40 backdrop-blur-sm p-8"
           >
             <div className="flex items-center gap-3 mb-8">
@@ -223,10 +232,10 @@ const Pricing = () => {
               ].map((step, i) => (
                 <motion.div
                   key={step.num}
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.1 * i }}
+                  initial={isMobile ? undefined : { opacity: 0, y: 12 }}
+                  whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
+                  viewport={isMobile ? undefined : { once: true }}
+                  transition={isMobile ? undefined : { delay: 0.1 * i }}
                   className="relative flex flex-col gap-2 rounded-xl bg-white/5 border border-white/8 p-4 hover:bg-white/8 transition-colors"
                 >
                   <span className={`text-2xl font-black bg-gradient-to-br ${step.color} bg-clip-text text-transparent`}>{step.num}</span>
@@ -242,10 +251,10 @@ const Pricing = () => {
 
           {/* Transparency Section */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.5 }}
+            initial={isMobile ? undefined : { opacity: 0, y: 16 }}
+            whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
+            viewport={isMobile ? undefined : { once: true }}
+            transition={isMobile ? undefined : { delay: 0.5 }}
             className="mt-10 text-center"
           >
             <h4 className="text-lg font-bold text-white mb-4">Our Promise</h4>

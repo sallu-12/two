@@ -239,25 +239,32 @@ const sendWithTransporter = async (
 const sendViaResend = async (mailOptions: SendMailOptions): Promise<{ ok: boolean; error?: string; info?: { id?: string } }> => {
   try {
     if (!resendApiKey) {
+      console.log('❌ Resend: API key not configured');
       return { ok: false, error: 'RESEND_API_KEY not configured' };
     }
 
+    console.log(`📧 Attempting Resend API call...`);
+    console.log(`   From: ${resendFrom}`);
+    console.log(`   To: ${adminEmail}`);
+    console.log(`   Subject: ${mailOptions.subject}`);
+
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => {
+      console.log('❌ Resend: Request timeout (12s)');
+      controller.abort();
+    }, 12000);
 
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${resendApiKey}`,
+        'Authorization': `Bearer ${resendApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         from: resendFrom,
-        to: [adminEmail],
-        reply_to: mailOptions.replyTo || undefined,
+        to: adminEmail,
         subject: mailOptions.subject,
         html: typeof mailOptions.html === 'string' ? mailOptions.html : undefined,
-        text: typeof mailOptions.text === 'string' ? mailOptions.text : undefined,
       }),
       signal: controller.signal,
     });
@@ -265,14 +272,19 @@ const sendViaResend = async (mailOptions: SendMailOptions): Promise<{ ok: boolea
     clearTimeout(timeout);
     const data = await response.json().catch(() => ({} as { id?: string; message?: string }));
 
+    console.log(`Resend API Response: ${response.status}`);
+    
     if (!response.ok) {
       const message = (data as { message?: string }).message || `Resend API error (${response.status})`;
+      console.log(`❌ Resend failed: ${message}`);
       return { ok: false, error: message };
     }
 
+    console.log(`✅ Resend success: ${(data as { id?: string }).id}`);
     return { ok: true, info: { id: (data as { id?: string }).id } };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown resend error';
+    console.log(`❌ Resend error: ${message}`);
     return { ok: false, error: message };
   }
 };

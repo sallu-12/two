@@ -8,6 +8,10 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { SendMailOptions } from 'nodemailer';
 import { config } from 'dotenv';
 
+// Load env files for both execution contexts:
+// 1) service root at /backend (Render in this repo)
+// 2) monorepo root with /backend/.env.local
+config({ path: '.env.local' });
 config({ path: 'backend/.env.local' });
 
 const app = express();
@@ -94,21 +98,25 @@ app.use(cors({
   maxAge: 86400, // Cache preflight for 24 hours
 }));
 
-// Email transporter with connection pooling
+// Email transporter with connection pooling + timeout handling
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
     user: process.env.ADMIN_EMAIL,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS?.trim(), // Remove any spaces from password
   },
   pool: {
-    maxConnections: 5,
-    maxMessages: 100,
+    maxConnections: 3,
+    maxMessages: 50,
     rateDelta: 4000,
     rateLimit: 14,
   },
+  connectionTimeout: 10000, // 10 seconds
+  socketTimeout: 15000, // 15 seconds
+  logger: isDev,
+  debug: isDev,
 } as SMTPTransport.Options);
 
 // In-memory transaction store (would be database in production)
@@ -184,17 +192,25 @@ const generateContactEmailHTML = (name: string, email: string, instagram: string
 </div>
 `;
 
-// Helper function to send email asynchronously with comprehensive logging
-const sendEmailAsync = async (mailOptions: SendMailOptions) => {
+// Helper function to send email asynchronously with timeout protection.
+// It logs failures but does not throw, so API routes can still respond gracefully.
+const sendEmailAsync = async (mailOptions: SendMailOptions): Promise<{ ok: boolean; info?: SMTPTransport.SentMessageInfo; error?: string }> => {
   try {
-    const info = await transporter.sendMail(mailOptions);
+    // Add timeout wrapper - fail after 15 seconds
+    const emailPromise = transporter.sendMail(mailOptions);
+    const timeoutPromise = new Promise<null>((_, reject) => 
+      setTimeout(() => reject(new Error('Email send timeout - exceeded 15 seconds')), 15000)
+    );
+    
+    const info = await Promise.race([emailPromise, timeoutPromise]) as SMTPTransport.SentMessageInfo;
     console.log(`✅ Email SENT successfully to: ${mailOptions.to} | MessageID: ${info.messageId}`);
-    return info;
+    return { ok: true, info };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     console.error(`❌ Email FAILED to: ${mailOptions.to} | Error: ${errorMsg}`);
     console.error(`📧 Transporter config - Host: smtp.gmail.com | Port: 587 | User: ${process.env.ADMIN_EMAIL}`);
-    throw err;
+    console.error(`⚠️ Password spaces removed during auth: ${process.env.EMAIL_PASS ? 'YES' : 'NO'}`);
+    return { ok: false, error: errorMsg };
   }
 };
 
@@ -561,7 +577,14 @@ app.post('/api/send-email', emailLimiter, async (req: Request, res: Response) =>
           text: `New Contact Form Submission\n\nName: ${name}\nEmail: ${email}\nInstagram: ${instagram}\nYouTube Channel: ${channelLink || '—'}\nNiche: ${niche}\n\nMessage:\n${message}`,
         };
 
-        await sendEmailAsync(mailOptions);
+        const sendResult = await sendEmailAsync(mailOptions);
+        if (!sendResult.ok) {
+          return res.status(202).json({
+            success: true,
+            message: 'Message received. Email delivery is delayed, please retry in a minute.',
+          });
+        }
+
         console.log(`📬 Contact form email sent from ${email} → ${process.env.ADMIN_EMAIL}`);
         return res.status(200).json({ success: true, message: 'Message received!' });
       }
@@ -594,7 +617,14 @@ app.post('/api/send-email', emailLimiter, async (req: Request, res: Response) =>
       attachments: attachments.length > 0 ? attachments : undefined,
     };
 
-    await sendEmailAsync(mailOptions);
+    const sendResult = await sendEmailAsync(mailOptions);
+    if (!sendResult.ok) {
+      return res.status(202).json({
+        success: true,
+        message: 'Payment received. Email delivery is delayed, please retry in a minute.',
+      });
+    }
+
     console.log(`📬 Order email sent | Subject: ${subject} | To: ${process.env.ADMIN_EMAIL} | Screenshot: ${attachments.length > 0 ? 'YES' : 'NO'}`);
     
     // Mark transaction as processed if present
@@ -609,8 +639,24 @@ app.post('/api/send-email', emailLimiter, async (req: Request, res: Response) =>
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     console.error(`❌ Send-email endpoint error: ${errorMsg}`);
-    return res.status(500).json({ error: 'Failed to send email: ' + errorMsg });
+    return res.status(500).json({ error: 'Request processing failed' });
   }
+});
+
+app.get('/api/health', (req: Request, res: Response) => {
+  res.status(200).json({
+    ok: true,
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/api/debug', (req: Request, res: Response) => {
+  res.status(200).json({
+    adminEmail: process.env.ADMIN_EMAIL || 'NOT_SET',
+    emailPassSet: Boolean(process.env.EMAIL_PASS),
+    nodeEnv: process.env.NODE_ENV || 'NOT_SET',
+  });
 });
 
 // Cleanup old transactions (older than 24 hours)

@@ -577,15 +577,20 @@ app.post('/api/send-email', emailLimiter, async (req: Request, res: Response) =>
           text: `New Contact Form Submission\n\nName: ${name}\nEmail: ${email}\nInstagram: ${instagram}\nYouTube Channel: ${channelLink || '—'}\nNiche: ${niche}\n\nMessage:\n${message}`,
         };
 
-        const sendResult = await sendEmailAsync(mailOptions);
-        if (!sendResult.ok) {
-          return res.status(202).json({
-            success: true,
-            message: 'Message received. Email delivery is delayed, please retry in a minute.',
+        // Respond immediately so frontend never waits on SMTP latency.
+        sendEmailAsync(mailOptions)
+          .then((sendResult) => {
+            if (!sendResult.ok) {
+              console.warn(`⚠️ Contact form email queued but delivery failed: ${sendResult.error || 'unknown'}`);
+            } else {
+              console.log(`📬 Contact form email sent from ${email} → ${process.env.ADMIN_EMAIL}`);
+            }
+          })
+          .catch((sendErr) => {
+            const msg = sendErr instanceof Error ? sendErr.message : 'unknown';
+            console.error(`❌ Contact form async send error: ${msg}`);
           });
-        }
 
-        console.log(`📬 Contact form email sent from ${email} → ${process.env.ADMIN_EMAIL}`);
         return res.status(200).json({ success: true, message: 'Message received!' });
       }
       
@@ -617,15 +622,19 @@ app.post('/api/send-email', emailLimiter, async (req: Request, res: Response) =>
       attachments: attachments.length > 0 ? attachments : undefined,
     };
 
-    const sendResult = await sendEmailAsync(mailOptions);
-    if (!sendResult.ok) {
-      return res.status(202).json({
-        success: true,
-        message: 'Payment received. Email delivery is delayed, please retry in a minute.',
+    // Respond immediately and process email in background.
+    sendEmailAsync(mailOptions)
+      .then((sendResult) => {
+        if (!sendResult.ok) {
+          console.warn(`⚠️ Order email queued but delivery failed: ${sendResult.error || 'unknown'}`);
+        } else {
+          console.log(`📬 Order email sent | Subject: ${subject} | To: ${process.env.ADMIN_EMAIL} | Screenshot: ${attachments.length > 0 ? 'YES' : 'NO'}`);
+        }
+      })
+      .catch((sendErr) => {
+        const msg = sendErr instanceof Error ? sendErr.message : 'unknown';
+        console.error(`❌ Order async send error: ${msg}`);
       });
-    }
-
-    console.log(`📬 Order email sent | Subject: ${subject} | To: ${process.env.ADMIN_EMAIL} | Screenshot: ${attachments.length > 0 ? 'YES' : 'NO'}`);
     
     // Mark transaction as processed if present
     if (req.body.transactionId) {

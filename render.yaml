@@ -15,5 +15,9 @@ services:
         value: bolzaa277@gmail.com
       - key: EMAIL_PASS
         originalValue: wvbe qofj xcdm axbx
+      - key: RESEND_API_KEY
+        originalValue: re_Xikeie7u_sUGzU84Zyr4mMfEpyy3bWt7M
+      - key: RESEND_FROM
+        value: Bolzaa <onboarding@resend.dev>
       - key: ALLOWED_ORIGINS
-        value: *
+        value: https://bolzaa-work.vercel.app

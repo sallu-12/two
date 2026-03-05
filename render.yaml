@@ -16,7 +16,7 @@ services:
       - key: EMAIL_PASS
         originalValue: wvbe qofj xcdm axbx
       - key: RESEND_API_KEY
-        originalValue: re_Xikeie7u_sUGzU84Zyr4mMfEpyy3bWt7M
+        originalValue: re_ETALKK8h_HC3FrXmwUostEmP4HQ9y2vJD
       - key: RESEND_FROM
         value: Bolzaa <onboarding@resend.dev>
       - key: ALLOWED_ORIGINS

@@ -101,6 +101,8 @@ app.use(cors({
 
 const adminEmail = (process.env.ADMIN_EMAIL || '').trim();
 const emailPass = (process.env.EMAIL_PASS || '').replace(/\s+/g, '');
+const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+const resendFrom = (process.env.RESEND_FROM || `Bolzaa <onboarding@resend.dev>`).trim();
 
 const makeTransporter = (options: SMTPTransport.Options) => {
   return nodemailer.createTransport({
@@ -143,6 +145,7 @@ const fallbackTransporter = makeTransporter({
 
 let lastEmailError = '';
 let lastEmailSuccessAt = '';
+let lastEmailProvider: 'resend' | 'smtp465' | 'smtp587' | '' = '';
 
 // In-memory transaction store (would be database in production)
 const verifiedTransactions: {
@@ -233,10 +236,51 @@ const sendWithTransporter = async (
   return info;
 };
 
+const sendViaResend = async (mailOptions: SendMailOptions): Promise<{ ok: boolean; error?: string; info?: { id?: string } }> => {
+  try {
+    if (!resendApiKey) {
+      return { ok: false, error: 'RESEND_API_KEY not configured' };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: resendFrom,
+        to: [adminEmail],
+        reply_to: mailOptions.replyTo || undefined,
+        subject: mailOptions.subject,
+        html: typeof mailOptions.html === 'string' ? mailOptions.html : undefined,
+        text: typeof mailOptions.text === 'string' ? mailOptions.text : undefined,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+    const data = await response.json().catch(() => ({} as { id?: string; message?: string }));
+
+    if (!response.ok) {
+      const message = (data as { message?: string }).message || `Resend API error (${response.status})`;
+      return { ok: false, error: message };
+    }
+
+    return { ok: true, info: { id: (data as { id?: string }).id } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown resend error';
+    return { ok: false, error: message };
+  }
+};
+
 const sendEmailAsync = async (mailOptions: SendMailOptions): Promise<{ ok: boolean; info?: SMTPTransport.SentMessageInfo; error?: string }> => {
   try {
-    if (!adminEmail || !emailPass) {
-      const configError = 'Email config missing: ADMIN_EMAIL or EMAIL_PASS is empty';
+    if (!adminEmail) {
+      const configError = 'Email config missing: ADMIN_EMAIL is empty';
       lastEmailError = configError;
       console.error(`❌ ${configError}`);
       return { ok: false, error: configError };
@@ -248,13 +292,33 @@ const sendEmailAsync = async (mailOptions: SendMailOptions): Promise<{ ok: boole
       to: adminEmail,
     };
 
+    if (resendApiKey) {
+      const resendResult = await sendViaResend(normalizedOptions);
+      if (resendResult.ok) {
+        lastEmailProvider = 'resend';
+        lastEmailError = '';
+        lastEmailSuccessAt = new Date().toISOString();
+        console.log(`✅ Email SENT via Resend | id: ${resendResult.info?.id || 'n/a'}`);
+        return { ok: true };
+      }
+      console.warn(`⚠️ Resend send failed, falling back to SMTP: ${resendResult.error}`);
+    }
+
+    if (!emailPass) {
+      const smtpConfigError = 'SMTP config missing: EMAIL_PASS is empty and Resend not available';
+      lastEmailError = smtpConfigError;
+      return { ok: false, error: smtpConfigError };
+    }
+
     let info: SMTPTransport.SentMessageInfo;
     try {
       info = await sendWithTransporter(primaryTransporter, 'smtp465', normalizedOptions);
+      lastEmailProvider = 'smtp465';
     } catch (primaryErr) {
       const primaryMsg = primaryErr instanceof Error ? primaryErr.message : 'unknown primary transport error';
       console.warn(`⚠️ Primary SMTP failed, trying fallback transport: ${primaryMsg}`);
       info = await sendWithTransporter(fallbackTransporter, 'smtp587', normalizedOptions);
+      lastEmailProvider = 'smtp587';
     }
 
     lastEmailError = '';
@@ -721,7 +785,10 @@ app.get('/api/debug', (req: Request, res: Response) => {
   res.status(200).json({
     adminEmail: adminEmail || 'NOT_SET',
     emailPassSet: Boolean(emailPass),
+    resendConfigured: Boolean(resendApiKey),
+    resendFrom: resendFrom,
     nodeEnv: process.env.NODE_ENV || 'NOT_SET',
+    lastEmailProvider: lastEmailProvider || null,
     lastEmailError: lastEmailError || null,
     lastEmailSuccessAt: lastEmailSuccessAt || null,
   });
@@ -747,6 +814,10 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 // Server startup with transporter verification
 const server = app.listen(PORT, async () => {
+  if (resendApiKey) {
+    console.log('✅ Resend API configured. Email delivery will use HTTPS API first.');
+  }
+
   try {
     // Verify SMTP connectivity with primary then fallback transport.
     await primaryTransporter.verify();
@@ -761,6 +832,9 @@ const server = app.listen(PORT, async () => {
       const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown error';
       console.error(`❌ SMTP verify failed on both transports. Last error: ${fallbackMsg}`);
       console.error(`⚠️ Email sending will not work until SMTP is configured correctly`);
+      if (!resendApiKey) {
+        console.error('⚠️ Set RESEND_API_KEY in Render env for reliable delivery over HTTPS.');
+      }
     }
   }
 

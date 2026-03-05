@@ -108,6 +108,8 @@ const makeTransporter = (options: SMTPTransport.Options) => {
     connectionTimeout: 10000,
     socketTimeout: 15000,
     greetingTimeout: 10000,
+    // Render environments may not have IPv6 egress for smtp.gmail.com.
+    family: 4,
     auth: {
       user: adminEmail,
       pass: emailPass,

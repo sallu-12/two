@@ -7,6 +7,7 @@ import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { SendMailOptions } from 'nodemailer';
 import { config } from 'dotenv';
+import dns from 'node:dns';
 
 // Load env files for both execution contexts:
 // 1) service root at /backend (Render in this repo)
@@ -108,8 +109,10 @@ const makeTransporter = (options: SMTPTransport.Options) => {
     connectionTimeout: 10000,
     socketTimeout: 15000,
     greetingTimeout: 10000,
-    // Render environments may not have IPv6 egress for smtp.gmail.com.
-    family: 4,
+    // Force IPv4 DNS lookup to avoid ENETUNREACH on IPv6-only resolved hosts in Render.
+    lookup: (hostname, opts, callback) => {
+      dns.lookup(hostname, { family: 4, all: false }, callback);
+    },
     auth: {
       user: adminEmail,
       pass: emailPass,

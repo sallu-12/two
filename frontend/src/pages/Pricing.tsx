@@ -126,7 +126,7 @@ const Pricing = () => {
           />
 
           {/* Pricing Cards Grid */}
-          <div className="grid gap-8 md:grid-cols-3 mt-16">
+          <div className="grid grid-cols-1 gap-4 sm:gap-6 md:gap-8 md:grid-cols-3 mt-16">
             {plans.map((plan, i) => (
               <motion.div
                 key={plan.name}
@@ -135,7 +135,7 @@ const Pricing = () => {
                 viewport={isMobile ? undefined : { once: true }}
                 transition={isMobile ? undefined : { delay: i * 0.1, duration: 0.5 }}
                 className={`relative ${
-                  plan.popular ? "scale-105 mt-6" : ""
+                  plan.popular ? "md:scale-105 md:mt-6" : ""
                 } hover:-translate-y-2 transition-transform duration-300`}
               >
                 {/* Most Popular Badge — outside AnimatedBorderCard so it's never clipped */}
@@ -156,7 +156,7 @@ const Pricing = () => {
                   glowBlur={plan.popular ? 18 : 12}
                   className="h-full"
                 >
-                <div className="relative flex flex-col p-8 h-full group">
+                <div className="relative flex flex-col p-4 sm:p-6 md:p-8 h-full group">
 
                 {/* Plan Header */}
                 <div className={`pb-6 border-b border-border/30`}>
@@ -223,7 +223,7 @@ const Pricing = () => {
               <h4 className="text-sm font-bold tracking-widest uppercase text-white/50">How It Works</h4>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-4 md:gap-4">
               {[
                 { num: "01", label: "Pick a Plan", desc: "Choose Ideas, Starter, Growth, or Scale", color: "from-violet-500 to-purple-600" },
                 { num: "02", label: "Fill Details", desc: "Submit your niche, audience & channel link", color: "from-blue-500 to-cyan-500" },

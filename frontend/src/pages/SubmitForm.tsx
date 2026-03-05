@@ -250,8 +250,7 @@ const SubmitForm = () => {
           subject: `[Bolzaa] New Order - ${state?.plan || "Plan"} | ${trimmedData.name} | TxID: ${state?.customerInfo?.transactionId || "N/A"}`,
           text: emailContent,
           html: emailHTML,
-        },
-        5000
+        }
       ).catch((err: unknown) => {
         console.error("Failed to send email:", err);
       });

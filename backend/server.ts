@@ -301,7 +301,10 @@ const sendEmailAsync = async (mailOptions: SendMailOptions): Promise<{ ok: boole
         console.log(`✅ Email SENT via Resend | id: ${resendResult.info?.id || 'n/a'}`);
         return { ok: true };
       }
-      console.warn(`⚠️ Resend send failed, falling back to SMTP: ${resendResult.error}`);
+      const resendError = resendResult.error || 'Unknown Resend error';
+      console.warn(`⚠️ Resend send failed: ${resendError}`);
+      console.warn(`⚠️ Falling back to SMTP...`);
+      lastEmailError = `Resend failed: ${resendError}`;
     }
 
     if (!emailPass) {

@@ -98,26 +98,46 @@ app.use(cors({
   maxAge: 86400, // Cache preflight for 24 hours
 }));
 
-// Email transporter with connection pooling + timeout handling
-const transporter = nodemailer.createTransport({
+const adminEmail = (process.env.ADMIN_EMAIL || '').trim();
+const emailPass = (process.env.EMAIL_PASS || '').replace(/\s+/g, '');
+
+const makeTransporter = (options: SMTPTransport.Options) => {
+  return nodemailer.createTransport({
+    logger: isDev,
+    debug: isDev,
+    connectionTimeout: 10000,
+    socketTimeout: 15000,
+    greetingTimeout: 10000,
+    auth: {
+      user: adminEmail,
+      pass: emailPass,
+    },
+    ...options,
+  } as SMTPTransport.Options);
+};
+
+// Try SSL first (465), then STARTTLS fallback (587).
+const primaryTransporter = makeTransporter({
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  tls: {
+    servername: 'smtp.gmail.com',
+  },
+});
+
+const fallbackTransporter = makeTransporter({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
-  auth: {
-    user: process.env.ADMIN_EMAIL,
-    pass: process.env.EMAIL_PASS?.trim(), // Remove any spaces from password
+  requireTLS: true,
+  tls: {
+    servername: 'smtp.gmail.com',
   },
-  pool: {
-    maxConnections: 3,
-    maxMessages: 50,
-    rateDelta: 4000,
-    rateLimit: 14,
-  },
-  connectionTimeout: 10000, // 10 seconds
-  socketTimeout: 15000, // 15 seconds
-  logger: isDev,
-  debug: isDev,
-} as SMTPTransport.Options);
+});
+
+let lastEmailError = '';
+let lastEmailSuccessAt = '';
 
 // In-memory transaction store (would be database in production)
 const verifiedTransactions: {
@@ -194,22 +214,54 @@ const generateContactEmailHTML = (name: string, email: string, instagram: string
 
 // Helper function to send email asynchronously with timeout protection.
 // It logs failures but does not throw, so API routes can still respond gracefully.
+const sendWithTransporter = async (
+  transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo>,
+  transportLabel: string,
+  mailOptions: SendMailOptions,
+) => {
+  const emailPromise = transporter.sendMail(mailOptions);
+  const timeoutPromise = new Promise<null>((_, reject) =>
+    setTimeout(() => reject(new Error(`Email send timeout on ${transportLabel} - exceeded 15 seconds`)), 15000),
+  );
+
+  const info = await Promise.race([emailPromise, timeoutPromise]) as SMTPTransport.SentMessageInfo;
+  return info;
+};
+
 const sendEmailAsync = async (mailOptions: SendMailOptions): Promise<{ ok: boolean; info?: SMTPTransport.SentMessageInfo; error?: string }> => {
   try {
-    // Add timeout wrapper - fail after 15 seconds
-    const emailPromise = transporter.sendMail(mailOptions);
-    const timeoutPromise = new Promise<null>((_, reject) => 
-      setTimeout(() => reject(new Error('Email send timeout - exceeded 15 seconds')), 15000)
-    );
-    
-    const info = await Promise.race([emailPromise, timeoutPromise]) as SMTPTransport.SentMessageInfo;
+    if (!adminEmail || !emailPass) {
+      const configError = 'Email config missing: ADMIN_EMAIL or EMAIL_PASS is empty';
+      lastEmailError = configError;
+      console.error(`❌ ${configError}`);
+      return { ok: false, error: configError };
+    }
+
+    const normalizedOptions: SendMailOptions = {
+      ...mailOptions,
+      from: adminEmail,
+      to: adminEmail,
+    };
+
+    let info: SMTPTransport.SentMessageInfo;
+    try {
+      info = await sendWithTransporter(primaryTransporter, 'smtp465', normalizedOptions);
+    } catch (primaryErr) {
+      const primaryMsg = primaryErr instanceof Error ? primaryErr.message : 'unknown primary transport error';
+      console.warn(`⚠️ Primary SMTP failed, trying fallback transport: ${primaryMsg}`);
+      info = await sendWithTransporter(fallbackTransporter, 'smtp587', normalizedOptions);
+    }
+
+    lastEmailError = '';
+    lastEmailSuccessAt = new Date().toISOString();
     console.log(`✅ Email SENT successfully to: ${mailOptions.to} | MessageID: ${info.messageId}`);
     return { ok: true, info };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    lastEmailError = errorMsg;
     console.error(`❌ Email FAILED to: ${mailOptions.to} | Error: ${errorMsg}`);
-    console.error(`📧 Transporter config - Host: smtp.gmail.com | Port: 587 | User: ${process.env.ADMIN_EMAIL}`);
-    console.error(`⚠️ Password spaces removed during auth: ${process.env.EMAIL_PASS ? 'YES' : 'NO'}`);
+    console.error(`📧 Transport config user: ${adminEmail || 'NOT_SET'}`);
+    console.error(`⚠️ Password loaded: ${emailPass ? 'YES' : 'NO'}`);
     return { ok: false, error: errorMsg };
   }
 };
@@ -662,9 +714,11 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 app.get('/api/debug', (req: Request, res: Response) => {
   res.status(200).json({
-    adminEmail: process.env.ADMIN_EMAIL || 'NOT_SET',
-    emailPassSet: Boolean(process.env.EMAIL_PASS),
+    adminEmail: adminEmail || 'NOT_SET',
+    emailPassSet: Boolean(emailPass),
     nodeEnv: process.env.NODE_ENV || 'NOT_SET',
+    lastEmailError: lastEmailError || null,
+    lastEmailSuccessAt: lastEmailSuccessAt || null,
   });
 });
 
@@ -689,13 +743,20 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 // Server startup with transporter verification
 const server = app.listen(PORT, async () => {
   try {
-    // Verify SMTP connection before accepting requests
-    await transporter.verify();
-    console.log(`✅ SMTP Connection verified for: ${process.env.ADMIN_EMAIL}`);
+    // Verify SMTP connectivity with primary then fallback transport.
+    await primaryTransporter.verify();
+    console.log(`✅ SMTP(465) Connection verified for: ${adminEmail}`);
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`❌ SMTP Connection FAILED: ${errorMsg}`);
-    console.error(`⚠️ Email sending will not work until SMTP is configured correctly`);
+    const firstError = err instanceof Error ? err.message : 'Unknown error';
+    console.warn(`⚠️ SMTP(465) verify failed: ${firstError}`);
+    try {
+      await fallbackTransporter.verify();
+      console.log(`✅ SMTP(587) Connection verified for: ${adminEmail}`);
+    } catch (fallbackErr) {
+      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown error';
+      console.error(`❌ SMTP verify failed on both transports. Last error: ${fallbackMsg}`);
+      console.error(`⚠️ Email sending will not work until SMTP is configured correctly`);
+    }
   }
 
   if (isDev) {
